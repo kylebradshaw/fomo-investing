@@ -40,6 +40,8 @@ def parse_portfolio(portfolio_str):
 def calculate_values(portfolio, start_date, end_date):
     data = []
     total_value_change = 0
+    total_start_value = 0
+    total_end_value = 0
 
     for ticker, shares in portfolio:
         df = fetch_stock_data(ticker, start_date, end_date)
@@ -53,6 +55,8 @@ def calculate_values(portfolio, start_date, end_date):
         percent_change = ((end_value - start_value) / start_value) * 100
         value_change = end_value - start_value
         total_value_change += value_change
+        total_start_value += start_value
+        total_end_value += end_value
 
         data.append([
             f"{ticker} ({shares:.3f})",
@@ -65,7 +69,11 @@ def calculate_values(portfolio, start_date, end_date):
         ])
 
     formatted_total_value_change = f"${total_value_change:,.2f}"
-    return data, formatted_total_value_change
+    formatted_total_start_value = f"${total_start_value:,.2f}"
+    formatted_total_end_value = f"${total_end_value:,.2f}"
+    formatted_percent_change = f"{(total_value_change / total_start_value) * 100:.2f}%"
+
+    return data, formatted_total_start_value, formatted_total_end_value, formatted_percent_change, formatted_total_value_change
 
 def colorize_value(value):
     numeric_value = float(value.replace("$", "").replace(",", ""))
@@ -74,7 +82,7 @@ def colorize_value(value):
     else:
         return colored(f'{value}', 'red')
 
-def print_results(data, start_date, end_date, total_value_change):
+def print_results(data, start_date, end_date, total_start_value, total_end_value, total_percent_change, total_value_change):
     df = pd.DataFrame(data, columns=[
         'Ticker (Shares)',
         f'Start Value ({start_date})',
@@ -91,7 +99,7 @@ def print_results(data, start_date, end_date, total_value_change):
     table = tabulate(df, headers='keys', tablefmt='fancy_grid', showindex=False)
     print(table)
 
-    total_row = ['Total', '', '', '', '', '', colorize_value(total_value_change)]
+    total_row = ['Total', total_start_value, total_end_value, '', '', total_percent_change, colorize_value(total_value_change)]
     total_table = tabulate([total_row], headers=[
         'Ticker (Shares)',
         f'Start Value ({start_date})',
@@ -129,8 +137,8 @@ def load_history():
 
 def compare_portfolios(portfolio1, portfolio2):
     history = load_history()
-    data1 = next(entry for entry in history if entry[0] == portfolio1)
-    data2 = next(entry for entry in history if entry[0] == portfolio2)
+    data1 = next((entry for entry in history if entry[0] == portfolio1), None)
+    data2 = next((entry for entry in history if entry[0] == portfolio2), None)
 
     if not data1 or not data2:
         print(f"Both portfolios {portfolio1} and {portfolio2} must exist in the history with matching date ranges.")
@@ -146,12 +154,24 @@ def compare_portfolios(portfolio1, portfolio2):
     portfolio1 = parse_portfolio(portfolio_str1)
     portfolio2 = parse_portfolio(portfolio_str2)
 
-    data1, total_value_change1 = calculate_values(portfolio1, start_date1, end_date1)
-    data2, total_value_change2 = calculate_values(portfolio2, start_date2, end_date2)
+    _, total_start_value1, total_end_value1, percent_change1, total_value_change1 = calculate_values(portfolio1, start_date1, end_date1)
+    _, total_start_value2, total_end_value2, percent_change2, total_value_change2 = calculate_values(portfolio2, start_date2, end_date2)
 
-    print(f"Comparison of {portfolio1} and {portfolio2} from {start_date1} to {end_date1}")
-    print(f"{portfolio1} total value change: {total_value_change1}")
-    print(f"{portfolio2} total value change: {total_value_change2}")
+    numeric_change1 = float(total_value_change1.replace("$", "").replace(",", ""))
+    numeric_change2 = float(total_value_change2.replace("$", "").replace(",", ""))
+    difference = numeric_change1 - numeric_change2
+    formatted_difference = f"${difference:,.2f}"
+
+    comparison_data = [
+        [portfolio1, total_start_value1, total_end_value1, percent_change1, total_value_change1],
+        [portfolio2, total_start_value2, total_end_value2, percent_change2, total_value_change2],
+        ['Difference', '', '', '', formatted_difference]
+    ]
+
+    comparison_df = pd.DataFrame(comparison_data, columns=['Name', 'Start Value', 'End Value', 'Percent Change (%)', 'Value Change (USD)'])
+
+    comparison_table = tabulate(comparison_df, headers='keys', tablefmt='fancy_grid', showindex=False)
+    print(comparison_table)
 
 def main():
     args = parse_args()
@@ -159,10 +179,10 @@ def main():
     if args.aggregate:
         history = load_history()
         for entry in history:
-            portfolio_str, start_date, end_date = entry[1:]
+            name, portfolio_str, start_date, end_date = entry
             portfolio = parse_portfolio(portfolio_str)
-            data, total_value_change = calculate_values(portfolio, start_date, end_date)
-            print_results(data, start_date, end_date, total_value_change)
+            data, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date)
+            print_results(data, start_date, end_date, total_start_value, total_end_value, percent_change, total_value_change)
     elif args.compare:
         portfolio1, portfolio2 = args.compare.split(',')
         compare_portfolios(portfolio1, portfolio2)
@@ -177,9 +197,8 @@ def main():
             end_date = datetime.now().strftime('%Y-%m-%d')
 
         portfolio = parse_portfolio(args.portfolio)
-        data, total_value_change = calculate_values(portfolio, start_date, end_date)
-        print_results(data, start_date, end_date, total_value_change)
-
+        data, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date)
+        print_results(data, start_date, end_date, total_start_value, total_end_value, percent_change, total_value_change)
         # Save the current execution to history if --save flag is used
         if args.save:
             if not args.name:

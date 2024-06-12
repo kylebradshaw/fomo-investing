@@ -47,9 +47,13 @@ python fomo.py --portfolio=VTSAX(485.113),VOO(40.000) --from=2024.05.28 --to=202
 ### Run a new command and save to history
 
 ```bash
-python fomo.py --portfolio="VTSAX(485.113),VOO(40.000)" --from=2024.05.28 --to=2024.06.11 --save
+python fomo.py --name=ROTH-LEGACY --portfolio="VTSAX(485.113),VOO(40.000)" --from=2024.05.29 --to=2024.06.11 --save
 ```
 
 ```bash
-python fomo.py --portfolio="MSTR(25.000),FBTC(689.000)" --from=2024.05.29 --to=2024.06.11 --save
+python fomo.py --name=ROTH-BTC --portfolio="MSTR(25.000),FBTC(689.000)" --from=2024.05.29 --to=2024.06.11 --save
+```
+
+```bash
+python fomo.py --compare=ROTH-BTC,ROTH-LEGACY
 ```
