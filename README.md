@@ -16,18 +16,27 @@ python fomo.py --portfolio=VTSAX(485.113),VOO(40.000) --from=2024.05.28 --to=202
 
 ## HOWTO
 
+## How It Works
+
 ### Command-line Arguments
 
-- `--portfolio` specifies the portfolio of tickers and shares, e.g., `'VTSAX(485.113),VOO(40.000)'`.
+- `--name` specifies the name of the portfolio.
+- `--portfolio` specifies the portfolio of tickers and shares, e.g., `--portfolio=VTSAX(485.113),VOO(40.000)`.
 - `--from` specifies the start date in `YYYY.MM.DD` format.
 - `--to` specifies the end date in `YYYY.MM.DD` format (optional). Defaults to the previous market close if not provided.
 - `--aggregate` runs all recorded commands from the history file.
-- `--save` saves the command to the history file if it's unique for the given portfolio and date.
+- `--compare` compares the value change of two named portfolios, e.g., `--compare=Portfolio1,Portfolio2`.
+- `--save` saves the command to the historical file.
 
 ### History File
 
 - The script appends each execution to `portfolio_history.csv` if the `--save` flag is used.
-- The `save_to_history` function checks for duplicates before saving to ensure only unique entries per portfolio and date are saved.
+- The `save_to_history` function ensures that only one entry per name for a given date range exists in the history file. If a name and date range already exist, the entry is overwritten.
+- Each entry in the `portfolio_history.csv` file includes:
+  - `name`: The name of the portfolio.
+  - `portfolio`: The tickers and shares of the portfolio.
+  - `start_date`: The start date of the date range.
+  - `end_date`: The end date of the date range.
 
 ### Aggregate Execution
 
