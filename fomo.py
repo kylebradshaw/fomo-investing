@@ -12,12 +12,18 @@ HISTORY_FILE = 'portfolio_history.csv'
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Calculate portfolio value changes over a specified date range.")
-    parser.add_argument('--portfolio', type=str, required=True, help="Portfolio of tickers and shares, e.g., 'VTSAX(485.113),VOO(40.000)'")
-    parser.add_argument('--from', dest='frm', type=str, required=True, help="Start date in YYYY.MM.DD format")
-    parser.add_argument('--to', type=str, required=False, help="End date in YYYY.MM.DD format. Defaults to previous market close.")
+    parser.add_argument('--portfolio', type=str, help="Portfolio of tickers and shares, e.g., 'VTSAX(485.113),VOO(40.000)'")
+    parser.add_argument('--from', dest='frm', type=str, help="Start date in YYYY.MM.DD format")
+    parser.add_argument('--to', type=str, help="End date in YYYY.MM.DD format. Defaults to previous market close.")
     parser.add_argument('--aggregate', action='store_true', help="Run aggregate of all historical executions")
     parser.add_argument('--save', action='store_true', help="Save this command to the historical file")
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if not args.aggregate:
+        if not args.portfolio or not args.frm:
+            parser.error("--portfolio and --from are required unless --aggregate is specified.")
+
+    return args
 
 def fetch_stock_data(ticker, start_date, end_date):
     stock = yf.Ticker(ticker)
@@ -44,11 +50,12 @@ def calculate_values(portfolio, start_date, end_date):
         value_change = end_value - start_value
         total_value_change += value_change
 
-        data.append([f"{ticker} ({shares})", start_value, end_value, percent_change, value_change])
+        data.append([f"{ticker} ({shares:.3f})", f"{start_value:.2f}", f"{end_value:.2f}", f"{percent_change:.2f}", f"{value_change:.2f}"])
 
     return data, total_value_change
 
 def colorize_value(value):
+    value = float(value)
     if value >= 0:
         return colored(f'{value:.2f}', 'green')
     else:
@@ -100,7 +107,7 @@ def main():
             portfolio_str, start_date, end_date = entry
             portfolio = parse_portfolio(portfolio_str)
             data, total_value_change = calculate_values(portfolio, start_date, end_date)
-            print_results(data, start_date, end_date, total_value_change)
+            print_results(data, start_date, end_date, f"{total_value_change:.2f}")
     else:
         start_date = args.frm.replace('.', '-')
         end_date = args.to
@@ -113,7 +120,7 @@ def main():
 
         portfolio = parse_portfolio(args.portfolio)
         data, total_value_change = calculate_values(portfolio, start_date, end_date)
-        print_results(data, start_date, end_date, total_value_change)
+        print_results(data, start_date, end_date, f"{total_value_change:.2f}")
 
         # Save the current execution to history if --save flag is used
         if args.save:
