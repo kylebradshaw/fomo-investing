@@ -17,7 +17,7 @@ def parse_args():
     parser.add_argument('--from', dest='frm', type=str, help="Start date in YYYY.MM.DD format")
     parser.add_argument('--to', type=str, help="End date in YYYY.MM.DD format. Defaults to previous market close.")
     parser.add_argument('--aggregate', action='store_true', help="Run aggregate of all historical executions")
-    parser.add_argument('--compare', type=str, help="Compare the value change of two named portfolios, e.g., 'Portfolio1,Portfolio2'")
+    parser.add_argument('--compare', type=str, help="Compare the value change of two to five named portfolios, e.g., 'Portfolio1,Portfolio2,...'")
     parser.add_argument('--save', action='store_true', help="Save this command to the historical file")
     args = parser.parse_args()
 
@@ -62,8 +62,8 @@ def calculate_values(portfolio, start_date, end_date):
             f"{ticker} ({shares:.3f})",
             f"${start_value:,.2f}",
             f"${end_value:,.2f}",
-            f"${start_price:,.2f}",
-            f"${end_price:,.2f}",
+            f"{start_price:,.2f}",
+            f"{end_price:,.2f}",
             f"{percent_change:.2f}%",
             f"${value_change:,.2f}"
         ])
@@ -114,8 +114,8 @@ def print_results(data, start_date, end_date, total_start_value, total_end_value
 def save_to_history(name, portfolio, start_date, end_date):
     history = load_history()
 
-    # Remove any existing entry with the same name and date range
-    history = [entry for entry in history if not (entry[0] == name and entry[2] == start_date and entry[3] == end_date)]
+    # Remove any existing entry with the same name
+    history = [entry for entry in history if entry[0] != name]
 
     # Add the new entry
     history.append([name, portfolio, start_date, end_date])
@@ -133,45 +133,51 @@ def load_history():
     with open(HISTORY_FILE, 'r') as file:
         reader = csv.reader(file)
         next(reader)  # Skip header
-        return list(reader)
+        history = []
+        for row in reader:
+            if not row[3]:  # If end_date is blank
+                row[3] = get_previous_market_close()
+            history.append(row)
+        return history
 
-def compare_portfolios(portfolio1, portfolio2):
+def get_previous_market_close():
+    # Fetch the previous market close date
+    today = datetime.today()
+    stock = yf.Ticker("AAPL")  # Using AAPL as a reference ticker
+    df = stock.history(period="5d")
+    previous_close_date = df.index[-2].strftime('%Y-%m-%d')  # The second last date
+    return previous_close_date
+
+def compare_portfolios(portfolios):
     history = load_history()
-    data1 = next((entry for entry in history if entry[0] == portfolio1), None)
-    data2 = next((entry for entry in history if entry[0] == portfolio2), None)
+    portfolio_data = []
 
-    if not data1 or not data2:
-        print(f"Both portfolios {portfolio1} and {portfolio2} must exist in the history with matching date ranges.")
-        return
+    for portfolio_name in portfolios:
+        data = next((entry for entry in history if entry[0] == portfolio_name), None)
+        if not data:
+            print(f"Portfolio {portfolio_name} must exist in the history with matching date ranges.")
+            return
+        portfolio_data.append(data)
 
-    portfolio_str1, start_date1, end_date1 = data1[1:]
-    portfolio_str2, start_date2, end_date2 = data2[1:]
+    start_dates = {data[2] for data in portfolio_data}
+    end_dates = {data[3] for data in portfolio_data}
 
-    if start_date1 != start_date2 or end_date1 != end_date2:
-        print("The date ranges for the portfolios must match to compare.")
-        return
+        # if len(start_dates) > 1 or len(end_dates) > 1:
+        #     print("The date ranges for the portfolios must match to compare.")
+        #     return
 
-    portfolio1 = parse_portfolio(portfolio_str1)
-    portfolio2 = parse_portfolio(portfolio_str2)
+    start_date = start_dates.pop()
+    end_date = end_dates.pop()
 
-    _, total_start_value1, total_end_value1, percent_change1, total_value_change1 = calculate_values(portfolio1, start_date1, end_date1)
-    _, total_start_value2, total_end_value2, percent_change2, total_value_change2 = calculate_values(portfolio2, start_date2, end_date2)
+    comparison_data = []
+    for portfolio_name, portfolio_str, _, _ in portfolio_data:
+        portfolio = parse_portfolio(portfolio_str)
+        _, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date)
+        comparison_data.append([portfolio_name, total_start_value, total_end_value, percent_change, total_value_change])
 
-    numeric_change1 = float(total_value_change1.replace("$", "").replace(",", ""))
-    numeric_change2 = float(total_value_change2.replace("$", "").replace(",", ""))
-    difference = numeric_change1 - numeric_change2
-    formatted_difference = f"${difference:,.2f}"
-
-    comparison_data = [
-        [portfolio1, total_start_value1, total_end_value1, percent_change1, total_value_change1],
-        [portfolio2, total_start_value2, total_end_value2, percent_change2, total_value_change2],
-        ['Difference', '', '', '', formatted_difference]
-    ]
-
-    comparison_df = pd.DataFrame(comparison_data, columns=['Name', 'Start Value', 'End Value', 'Percent Change (%)', 'Value Change (USD)'])
-
-    comparison_table = tabulate(comparison_df, headers='keys', tablefmt='fancy_grid', showindex=False)
-    print(comparison_table)
+    total_comparison = pd.DataFrame(comparison_data, columns=['Name', 'Start Value', 'End Value', 'Percent Change (%)', 'Value Change (USD)'])
+    total_comparison_table = tabulate(total_comparison, headers='keys', tablefmt='fancy_grid', showindex=False)
+    print(total_comparison_table)
 
 def main():
     args = parse_args()
@@ -184,8 +190,11 @@ def main():
             data, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date)
             print_results(data, start_date, end_date, total_start_value, total_end_value, percent_change, total_value_change)
     elif args.compare:
-        portfolio1, portfolio2 = args.compare.split(',')
-        compare_portfolios(portfolio1, portfolio2)
+        portfolios = args.compare.split(',')
+        if len(portfolios) > 5:
+            print("You can compare up to 5 portfolios at a time.")
+            return
+        compare_portfolios(portfolios)
     else:
         start_date = args.frm.replace('.', '-')
         end_date = args.to
@@ -194,12 +203,12 @@ def main():
         if end_date:
             end_date = end_date.replace('.', '-')
         else:
-            end_date = datetime.now().strftime('%Y-%m-%d')
+            end_date = ''
 
         portfolio = parse_portfolio(args.portfolio)
-        data, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date)
-        print_results(data, start_date, end_date, total_start_value, total_end_value, percent_change, total_value_change)
-        # Save the current execution to history if --save flag is used
+        data, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date or get_previous_market_close())
+        print_results(data, start_date,end_date or get_previous_market_close(), total_start_value, total_end_value, percent_change, total_value_change)
+        # Save the current execution to history if –save flag is used
         if args.save:
             if not args.name:
                 raise ValueError("Name is required when saving a portfolio.")
