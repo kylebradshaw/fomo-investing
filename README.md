@@ -57,3 +57,7 @@ python fomo.py --name=ROTH-BTC --portfolio="MSTR(25.000),FBTC(689.000)" --from=2
 ```bash
 python fomo.py --compare=ROTH-BTC,ROTH-LEGACY
 ```
+
+```bash
+python fomo.py --name=TSLA-4-NVDA --portfolio="TSLA(155),NVDA(288)" --from=2024.01.01 --save
+```

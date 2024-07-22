@@ -1,7 +1,7 @@
 import argparse
 import yfinance as yf
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from tabulate import tabulate
 from termcolor import colored
 import csv
@@ -45,139 +45,136 @@ def calculate_values(portfolio, start_date, end_date):
 
     for ticker, shares in portfolio:
         df = fetch_stock_data(ticker, start_date, end_date)
+
         if df.empty:
+            print(f"No data for {ticker} between {start_date} and {end_date}. Skipping.")
             continue
 
-        start_price = df.iloc[0]['Close']
-        end_price = df.iloc[-1]['Close']
+        start_price = df['Close'].iloc[0]
+        end_price = df['Close'].iloc[-1]
         start_value = start_price * shares
         end_value = end_price * shares
-        percent_change = ((end_value - start_value) / start_value) * 100
         value_change = end_value - start_value
+        percent_change = (value_change / start_value) * 100
+
         total_value_change += value_change
         total_start_value += start_value
         total_end_value += end_value
 
         data.append([
-            f"{ticker} ({shares:.3f})",
-            f"${start_value:,.2f}",
-            f"${end_value:,.2f}",
-            f"{start_price:,.2f}",
-            f"{end_price:,.2f}",
-            f"{percent_change:.2f}%",
-            f"${value_change:,.2f}"
+            ticker,
+            shares,
+            start_price,
+            end_price,
+            start_value,
+            end_value,
+            percent_change,
+            value_change
         ])
 
-    formatted_total_value_change = f"${total_value_change:,.2f}"
-    formatted_total_start_value = f"${total_start_value:,.2f}"
-    formatted_total_end_value = f"${total_end_value:,.2f}"
-    formatted_percent_change = f"{(total_value_change / total_start_value) * 100:.2f}%"
-
-    return data, formatted_total_start_value, formatted_total_end_value, formatted_percent_change, formatted_total_value_change
-
-def colorize_value(value):
-    numeric_value = float(value.replace("$", "").replace(",", ""))
-    if numeric_value >= 0:
-        return colored(f'{value}', 'green')
+    if total_start_value == 0:
+        print("Total start value is zero, cannot calculate overall percent change.")
+        overall_percent_change = 0
     else:
-        return colored(f'{value}', 'red')
+        overall_percent_change = (total_value_change / total_start_value) * 100
 
-def print_results(data, start_date, end_date, total_start_value, total_end_value, total_percent_change, total_value_change):
+    return data, total_start_value, total_end_value, overall_percent_change, total_value_change
+
+# def print_results(data, start_date, end_date, total_start_value, total_end_value, percent_change, total_value_change):
+#     df = pd.DataFrame(data, columns=[
+#         'Ticker', 'Shares', 'Start Price', 'End Price', 'Start Value', 'End Value', 'Percent Change (%)', 'Value Change (USD)'
+#     ])
+#     table = tabulate(df, headers='keys', tablefmt='fancy_grid', showindex=False)
+#     print(colored(f"\nPortfolio performance from {start_date} to {end_date}:", 'cyan'))
+#     print(table)
+#     print(colored(f"\nTotal start value: ${total_start_value:,.2f}", 'green'))
+#     print(colored(f"Total end value: ${total_end_value:,.2f}", 'green'))
+#     print(colored(f"Overall percent change: {percent_change:.2f}%", 'yellow'))
+#     print(colored(f"Total value change: ${total_value_change:,.2f}", 'yellow'))
+def print_results(data, start_date, end_date, total_start_value, total_end_value, percent_change, total_value_change):
     df = pd.DataFrame(data, columns=[
-        'Ticker (Shares)',
-        f'Start Value ({start_date})',
-        f'End Value ({end_date})',
-        f'Start Price/Share ({start_date})',
-        f'End Price/Share ({end_date})',
-        'Percent Change (%)',
-        'Value Change (USD)'
+        'Ticker', 'Shares', 'Start Price', 'End Price', 'Start Value', 'End Value', 'Percent Change (%)', 'Value Change (USD)'
     ])
 
-    df['Percent Change (%)'] = df['Percent Change (%)'].apply(lambda x: colored(x, 'green') if '-' not in x else colored(x, 'red'))
-    df['Value Change (USD)'] = df['Value Change (USD)'].apply(colorize_value)
+    # Calculate summation and average
+    total_end_value_sum = df['End Value'].sum()
+    average_percent_change = df['Percent Change (%)'].mean()
+
+    # Create the summation row
+    summation_row = pd.DataFrame([{
+        'Ticker': 'Summation',
+        'Shares': '',
+        'Start Price': '',
+        'End Price': '',
+        'Start Value': '',
+        'End Value': total_end_value_sum,
+        'Percent Change (%)': average_percent_change,
+        'Value Change (USD)': ''
+    }])
+
+    # Concatenate the summation row to the original DataFrame
+    df = pd.concat([df, summation_row], ignore_index=True)
+
+    # Format all prices and values as USD
+    for column in ['Start Price', 'End Price', 'Start Value', 'End Value', 'Value Change (USD)']:
+        df[column] = df[column].map(lambda x: f"${x:,.2f}" if x != '' else '')
 
     table = tabulate(df, headers='keys', tablefmt='fancy_grid', showindex=False)
+    print(colored(f"\nPortfolio performance from {start_date} to {end_date}:", 'cyan'))
     print(table)
+    print(colored(f"\nTotal start value: ${total_start_value:,.2f}", 'green'))
+    print(colored(f"Total end value: ${total_end_value:,.2f}", 'green'))
+    print(colored(f"Overall percent change: {percent_change:.2f}%", 'yellow'))
+    print(colored(f"Total value change: ${total_value_change:,.2f}", 'yellow'))
 
-    total_row = ['Total', total_start_value, total_end_value, '', '', total_percent_change, colorize_value(total_value_change)]
-    total_table = tabulate([total_row], headers=[
-        'Ticker (Shares)',
-        f'Start Value ({start_date})',
-        f'End Value ({end_date})',
-        f'Start Price/Share ({start_date})',
-        f'End Price/Share ({end_date})',
-        'Percent Change (%)',
-        'Value Change (USD)'
-    ], tablefmt='fancy_grid', showindex=False)
-    print(total_table)
+def get_previous_market_close():
+    now = datetime.now()
+    if now.hour < 16:
+        now = now - timedelta(days=1)
+    previous_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    return previous_close.strftime('%Y-%m-%d')
 
 def save_to_history(name, portfolio, start_date, end_date):
-    history = load_history()
-
-    # Remove any existing entry with the same name
-    history = [entry for entry in history if entry[0] != name]
-
-    # Add the new entry
-    history.append([name, portfolio, start_date, end_date])
-
-    # Save the updated history
-    with open(HISTORY_FILE, 'w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['name', 'portfolio', 'start_date', 'end_date'])
-        writer.writerows(history)
+    with open(HISTORY_FILE, 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow([name, portfolio, start_date, end_date])
 
 def load_history():
     if not os.path.exists(HISTORY_FILE):
         return []
-
-    with open(HISTORY_FILE, 'r') as file:
-        reader = csv.reader(file)
-        next(reader)  # Skip header
-        history = []
-        for row in reader:
-            if not row[3]:  # If end_date is blank
-                row[3] = get_previous_market_close()
-            history.append(row)
-        return history
-
-def get_previous_market_close():
-    # Fetch the previous market close date
-    today = datetime.today()
-    stock = yf.Ticker("AAPL")  # Using AAPL as a reference ticker
-    df = stock.history(period="5d")
-    previous_close_date = df.index[-2].strftime('%Y-%m-%d')  # The second last date
-    return previous_close_date
+    with open(HISTORY_FILE, 'r') as f:
+        reader = csv.reader(f)
+        return list(reader)
 
 def compare_portfolios(portfolios):
     history = load_history()
-    portfolio_data = []
+    comparison_data = []
 
     for portfolio_name in portfolios:
-        data = next((entry for entry in history if entry[0] == portfolio_name), None)
-        if not data:
-            print(f"Portfolio {portfolio_name} must exist in the history with matching date ranges.")
-            return
-        portfolio_data.append(data)
+        matching_entries = [entry for entry in history if entry[0] == portfolio_name]
+        if not matching_entries:
+            print(f"No history found for portfolio '{portfolio_name}'. Skipping.")
+            continue
 
-    start_dates = {data[2] for data in portfolio_data}
-    end_dates = {data[3] for data in portfolio_data}
+        for entry in matching_entries:
+            name, portfolio_str, start_date, end_date = entry
+            portfolio = parse_portfolio(portfolio_str)
+            data, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date)
+            comparison_data.append([
+                name,
+                start_date,
+                end_date,
+                total_start_value,
+                total_end_value,
+                percent_change,
+                total_value_change
+            ])
 
-        # if len(start_dates) > 1 or len(end_dates) > 1:
-        #     print("The date ranges for the portfolios must match to compare.")
-        #     return
-
-    start_date = start_dates.pop()
-    end_date = end_dates.pop()
-
-    comparison_data = []
-    for portfolio_name, portfolio_str, _, _ in portfolio_data:
-        portfolio = parse_portfolio(portfolio_str)
-        _, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date)
-        comparison_data.append([portfolio_name, total_start_value, total_end_value, percent_change, total_value_change])
-
-    total_comparison = pd.DataFrame(comparison_data, columns=['Name', 'Start Value', 'End Value', 'Percent Change (%)', 'Value Change (USD)'])
-    total_comparison_table = tabulate(total_comparison, headers='keys', tablefmt='fancy_grid', showindex=False)
-    print(total_comparison_table)
+    comparison_df = pd.DataFrame(comparison_data, columns=[
+        'Name', 'Start Date', 'End Date', 'Start Value', 'End Value', 'Percent Change (%)', 'Value Change (USD)'
+    ])
+    comparison_table = tabulate(comparison_df, headers='keys', tablefmt='fancy_grid', showindex=False)
+    print(comparison_table)
 
 def main():
     args = parse_args()
@@ -187,8 +184,8 @@ def main():
         for entry in history:
             name, portfolio_str, start_date, end_date = entry
             portfolio = parse_portfolio(portfolio_str)
-            data, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date)
-            print_results(data, start_date, end_date, total_start_value, total_end_value, percent_change, total_value_change)
+            data, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date or get_previous_market_close())
+            print_results(data, start_date, end_date or get_previous_market_close(), total_start_value, total_end_value, percent_change, total_value_change)
     elif args.compare:
         portfolios = args.compare.split(',')
         if len(portfolios) > 5:
@@ -199,16 +196,15 @@ def main():
         start_date = args.frm.replace('.', '-')
         end_date = args.to
 
-        # Convert dates from YYYY.MM.DD to YYYY-MM-DD format
         if end_date:
             end_date = end_date.replace('.', '-')
         else:
-            end_date = ''
+            end_date = get_previous_market_close()
 
         portfolio = parse_portfolio(args.portfolio)
-        data, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date or get_previous_market_close())
-        print_results(data, start_date,end_date or get_previous_market_close(), total_start_value, total_end_value, percent_change, total_value_change)
-        # Save the current execution to history if –save flag is used
+        data, total_start_value, total_end_value, percent_change, total_value_change = calculate_values(portfolio, start_date, end_date)
+        print_results(data, start_date, end_date, total_start_value, total_end_value, percent_change, total_value_change)
+
         if args.save:
             if not args.name:
                 raise ValueError("Name is required when saving a portfolio.")
